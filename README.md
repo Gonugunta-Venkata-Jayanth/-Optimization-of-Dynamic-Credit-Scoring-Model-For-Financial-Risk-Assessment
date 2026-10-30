@@ -32,7 +32,9 @@ Traditional credit scoring models rely on a static calculation of an individual'
 | `Debt_to_Income_Ratio` | Debt-to-income ratio (0–1) |
 | `CIBIL_Score` | Target: CIBIL score |
 
-> The CSV is **not included in this repository**. The notebook loads it from `/content/synthetic_cibil_scores.csv` (Google Colab). A synthetic dataset with the same schema ships with [Credit-Risk-Analyzer](https://github.com/Gonugunta-Venkata-Jayanth/Credit-Risk-Analyzer).
+> The CSV is **not included in this repository**. The notebook reads `synthetic_cibil_scores.csv` from its own folder (on Colab, upload it to `/content/`). [Credit-Risk-Analyzer](https://github.com/Gonugunta-Venkata-Jayanth/Credit-Risk-Analyzer) ships a file with the same name and columns, but its `CIBIL_Score` values are different (spread across 300–900), so results from it will not match this project's data.
+
+**Class imbalance:** in the dataset used here, **83.14% of rows have `CIBIL_Score` exactly 300.00** (the floor), and the remaining 1,300 distinct values are mostly just above 300 (see the `value_counts` cell). A model that always predicts about 300 already lands within ±10 points for most rows, so the "within ±10 points" accuracy and the near-perfect tree-model scores mostly reflect this skew rather than real predictive power. Rebalancing, or a dataset with a realistic score spread, is needed before drawing conclusions.
 
 ## Approach
 
@@ -40,12 +42,13 @@ Traditional credit scoring models rely on a static calculation of an individual'
 2. **LSTM (time-series framing):**
    - Min-Max scaling of all columns.
    - Sliding windows of 7 time steps (`create_dataset`).
-   - Two stacked `LSTM(50)` layers → `Dense(25)` → `Dense(n_features)`. Adam optimiser, MSE loss, custom RMSE, R² and "within-10-points" accuracy metrics, 50 epochs, 20% validation split.
-   - Saved as `cibil_score.h5` and reloaded for evaluation.
+   - Chronological split: first 80% of sequences for training, last 20% held out for testing.
+   - Two stacked `LSTM(50)` layers → `Dense(25)` → `Dense(n_features)`. Adam optimiser, MSE loss, MAE, RMSE and R² metrics, 50 epochs, 20% validation split of the training sequences.
+   - Saved as `cibil_score.h5`, reloaded, and evaluated on the held-out sequences for the `CIBIL_Score` column in original units.
 3. **Random Forest Regressor:** 300 estimators, 67/33 train/test split.
 4. **Gradient boosting:** XGBoost (`n_estimators=100, learning_rate=0.1, max_depth=5`) and LightGBM (same settings), 70/30 split.
 5. **Feed-forward neural network:** Dense 64 → 32 → 16 → 1 (ReLU) on standardised features, 100 epochs.
-6. **Evaluation metrics:** MAE, MSE, RMSE, MAPE, R², MSLE, explained variance, and custom accuracy (prediction within ±10 points).
+6. **Evaluation metrics:** one shared `print_metrics` helper reports MAE, MSE, RMSE, MAPE, R², MSLE, explained variance, and custom accuracy (prediction within ±10 points) from each model's own test-set predictions.
 
 ## Workflow
 
@@ -79,46 +82,25 @@ flowchart TD
 -Optimization-of-Dynamic-Credit-Scoring-Model-For-Financial-Risk-Assessment/
 ├── CIBIL SCORE Various Algorithms.ipynb                    # EDA + LSTM, RF, XGBoost, LightGBM, FFNN
 ├── OPTIMIZATION OF DYNAMIC CREDIT SCORING Poster design.pdf # Project poster
+├── requirements.txt
 └── README.md
 ```
 
 ## How to Run
 
 1. Open `CIBIL SCORE Various Algorithms.ipynb` in [Google Colab](https://colab.research.google.com/) or Jupyter.
-2. Upload `synthetic_cibil_scores.csv` to `/content/`, or change the path in the second cell.
+2. Put `synthetic_cibil_scores.csv` next to the notebook (on Colab, upload it to `/content/`).
 3. Install the dependencies if you are running locally:
    ```bash
-   pip install numpy pandas seaborn matplotlib scikit-learn tensorflow xgboost lightgbm
+   pip install -r requirements.txt
    ```
-4. Run the cells in order. The Google Drive mount cell is optional.
+4. Run the cells in order. The Google Drive mount cell is skipped automatically outside Colab.
 
 ## Results
 
-The figures below are the outputs recorded in the notebook.
+The evaluation code was corrected: earlier versions printed the Random Forest's MAE/RMSE and the LSTM's accuracy under the XGBoost and LightGBM headings, scored the feed-forward network with LightGBM's predictions, and evaluated the LSTM on the same data it was trained on. The numbers previously quoted here came from those cells, so they have been removed.
 
-**LSTM:** evaluated on the windowed sequences built from the full scaled dataset
-
-| Metric | Value |
-|---|---|
-| MAE | 6.24 |
-| RMSE | 12.07 |
-| R² | 0.0047 |
-| Within ±10 points | 82.87% |
-
-**Random Forest Regressor:** 33% hold-out test set
-
-| Metric | Value |
-|---|---|
-| MSE | 0.22 |
-| MAE | 0.138 |
-| RMSE | 0.467 |
-| R² | 1.00 |
-| Explained variance | 0.9979 |
-
-**XGBoost:** 30% hold-out test set: MSE 0.19, R² 1.00.
-**LightGBM:** 30% hold-out test set: MSE 0.21, R² 1.00.
-
-On this synthetic dataset, the tree-based ensembles fit the target far more closely than the LSTM. The poster's conclusion highlights Random Forest as the core model of the dynamic scoring system.
+The dataset is not in this repository, so the notebook has not been re-run with the corrected code. Run it with the original `synthetic_cibil_scores.csv` to get valid figures, and read them alongside the class-imbalance note above.
 
 ## Poster
 
